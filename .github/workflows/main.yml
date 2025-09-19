@@ -1,0 +1,74 @@
+name: Export GitHub Repos to JSON (Python)
+
+on:
+  workflow_dispatch:   # 手動觸發
+
+jobs: # 定義此 workflow 會執行那些工作 (可以有多個 job)
+  export-repos:  # 這個 job
+    runs-on: ubuntu-latest # 告訴 github 我要在哪個虛擬主機上砲這個 job
+
+    steps: # 每個 job 由多個 steps 組成
+      - name: Checkout code # step 名稱
+        uses: actions/checkout@v4 # 把程式碼下載到 runner (雲端虛擬機) 執行，runner 是空的 如果需要執行或下載檔案 需要checkout
+ 
+      - name: Set up Python # step 名稱
+        uses: actions/setup-python@v5 # 安裝 python
+        with:
+          python-version: "3.11" # 指定版本
+
+      - name: Install dependencies # step 名稱
+        run: pip install requests # run : 代表直接在 runner 上執行 shell 指令 這裡安裝 requests 套件 用它來呼叫 github API
+
+      - name: Run Python script inside workflow # step 名稱  inline Python script（直接把 Python 寫在 workflow 裡）
+        env: # 設定環境變數，這裡把 GitHub Secrets 裡的 PERSONAL_TOKEN 傳到程式裡
+          TOKEN: ${{ secrets.PERSONAL_TOKEN }} # 個人存取權杖（PAT），用來呼叫 GitHub API。
+          # 行文字區塊 的寫法，可以把整個 Python script 放進去
+        run: |
+          python - <<'EOF' 
+          # 匯入模組 
+          import os # 處理系統功能 (如:讀取環境變數、檔案路徑)
+          import requests # http 套件，呼叫GitHub API
+          import csv # 存 csv 檔的模組
+
+          token = os.getenv("TOKEN") # 至環境變數找 token
+          if not token:
+              raise RuntimeError("Missing GitHub token in environment")
+
+          url = "https://api.github.com/user/repos" # GitHub API 可以拿到 登入的使用者的所有 repos
+          headers = {"Authorization": f"token {token}"} # HTTP 請求需要帶上 Token，證明「我是誰」
+
+          repos = [] # 存 repos 的資訊
+          page = 1 # 從第一頁開始抓
+
+          while True:
+                              # 發送 GET 請求，一頁最多拿 100 個 repos、第幾頁、包含 public 跟 private repo (每次 API 拿一頁資料)
+              response = requests.get(url, headers=headers, params={"per_page": 100, "page": page, "visibility": "all"})
+              if response.status_code != 200:
+                  raise Exception(f"GitHub API error: {response.status_code}, {response.text}")
+              # 檢查回應是否成功
+              data = response.json() # 把回應轉成 Python 物件（list/dict）
+              if not data:
+                  break # 沒有更多資料，跳出迴圈
+
+              for repo in data: # 把 repos 存到 list 中 (一次處理一個)
+                  repos.append({
+                      "org": repo["owner"]["login"],  # 取得組織或使用者名稱
+                      "name": repo["name"],
+                      "https_url": repo["clone_url"],
+                      "private": repo["private"], # 是否是私有 repo（True/False）
+                  })
+
+              page += 1 # 換下一頁
+                 
+          # 寫成 JSON 檔
+          with open("repos.json", "w", encoding="utf-8") as f:
+              json.dump(repos, f, indent=2, ensure_ascii=False)
+
+          print(f"[INFO] 已將 {len(repos)} 筆資料存到 repos.json")
+          EOF
+
+      - name: Upload repos.json  # step 名稱
+        uses: actions/upload-artifact@v4 # 把執行過程中產生的檔案存起來
+        with:
+          name: repos-list # artifact 的名字
+          path: repos.json # 指定要上傳的檔案
