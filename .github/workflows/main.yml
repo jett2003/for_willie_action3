@@ -22,6 +22,10 @@ jobs: # 定義此 workflow 會執行那些工作 (可以有多個 job)
       - name: Run Python script inside workflow # step 名稱  inline Python script（直接把 Python 寫在 workflow 裡）
         env: # 設定環境變數，這裡把 GitHub Secrets 裡的 PERSONAL_TOKEN 傳到程式裡
           TOKEN: ${{ secrets.PERSONAL_TOKEN }} # 個人存取權杖（PAT），用來呼叫 GitHub API。
+          REPO_UNIT_CODE: ${{ secrets.REPO_UNIT_CODE }}
+          REPO_PROJECT_TYPE: ${{ secrets.REPO_PROJECT_TYPE }}
+          REPO_ARCHITECTURE: ${{ secrets.REPO_ARCHITECTURE }}
+          REPO_LANGUAGE: ${{ secrets.REPO_LANGUAGE }}
           # 行文字區塊 的寫法，可以把整個 Python script 放進去
         run: |
           python - <<'EOF' 
@@ -34,6 +38,12 @@ jobs: # 定義此 workflow 會執行那些工作 (可以有多個 job)
           token = os.getenv("TOKEN") # 至環境變數找 token
           if not token:
               raise RuntimeError("Missing GitHub token in environment")
+
+          # Repo-specific Secrets
+          unit_code = os.getenv("REPO_UNIT_CODE", "N/A")
+          project_type = os.getenv("REPO_PROJECT_TYPE", "N/A")
+          architecture = os.getenv("REPO_ARCHITECTURE", "N/A")
+          language = os.getenv("REPO_LANGUAGE", "N/A")
 
           url = "https://api.github.com/user/repos" # GitHub API 可以拿到 登入的使用者的所有 repos
           headers = {"Authorization": f"token {token}"} # HTTP 請求需要帶上 Token，證明「我是誰」
@@ -53,10 +63,13 @@ jobs: # 定義此 workflow 會執行那些工作 (可以有多個 job)
 
               for repo in data: # 把 repos 存到 list 中 (一次處理一個)
                   repos.append({
-                      "org": repo["owner"]["login"],  # 取得組織或使用者名稱
+                      "org": repo["owner"]["login"],
                       "name": repo["name"],
                       "https_url": repo["clone_url"],
-                      "private": repo["private"], # 是否是私有 repo（True/False）
+                      "unit_code": unit_code,
+                      "project_type": project_type,
+                      "architecture": architecture,
+                      "language": language
                   })
 
               page += 1 # 換下一頁
